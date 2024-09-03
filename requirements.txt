@@ -3,7 +3,7 @@ random2==1.0.1
 openai==0.27.8
 gtts==2.2.3
 moviepy==1.0.3
-dotenv==0.0.5
+python-dotenv
 pysrt==1.1.2
 assemblyai==0.25.0
 pydub==0.25.1
@@ -13,3 +13,5 @@ google-auth==2.8.0
 google-auth-oauthlib==0.5.1
 google-auth-httplib2==0.1.0
 fastapi==0.111.1
+playsound
+requests

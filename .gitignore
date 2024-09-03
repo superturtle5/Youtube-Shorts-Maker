@@ -1,8 +1,12 @@
 .env
-/venv
+/env
 /generated
+/music
 minecraft.mp4
 commands.md
 secret.json
 credentials.json
+Google.json
 __pycache__
+mcLow.mp4
+snakes.mp4

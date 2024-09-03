@@ -13,10 +13,19 @@ import googleapiclient.discovery
 import googleapiclient.errors
 import google.auth.transport.requests
 import json
+import soundfile as sf
+from pydub import AudioSegment
+from audiostretchy.stretch import stretch_audio
 from dotenv import load_dotenv
+from openai import OpenAI
+from GoogleTTS import (
+    tts
+)
+
 
 # Load environment variables
 load_dotenv()
+num = 1
 
 def get_current_datetime():
     return datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -28,18 +37,89 @@ def fetch_reddit_post():
         user_agent=os.getenv('USER_AGENT'),
     )
     subreddit = reddit.subreddit('AmItheAsshole')
-    post = next(subreddit.new(limit=1))
-    return post.title, post.selftext
+    post = next(subreddit.new(limit=1)
+)
+    return post.title[0:50], post.selftext[0:4900]
+
+def makeStory(post):
+    client = OpenAI()
+    completion = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": "You are a helpful assistant."},
+            {   "role": "user",
+                "content": f"rewrite the following story to be more engaging and entertaining for short form content. Tell the story in first person, do not use acronyms, and use less than 4900 charaters. Make this story viral. {post}"}
+        ]
+    )
+    story = completion.choices[0].message.content
+    print(story)
+    return story
 
 def generate_speech(content, output_path):
-    speech = gTTS(text=content, lang='en', slow=False)
-    speech.save(output_path)
+    speech = tts(content,output_path)
     return output_path
+def speed_speech(input_file, output_file):
+    speedFactor = 1.3
+    print(f"speeding up {input_file}")
+    toWav = AudioSegment.from_file(input_file)
+    toWav.export("generated/temp.wav",format="wav")
+
+    stretch_audio("generated/temp.wav","generated/file.wav", ratio=1/speedFactor)
+    newDuration = (toWav.duration_seconds/speedFactor)
+
+    outputAudio = AudioSegment.from_file("generated/file.wav")[0:(newDuration*1000)].export(output_file, format="mp3")
+    return output_file
+
+def makeMore(input_path):
+    audio_clip = AudioSegment.from_file(input_path) 
+    duration = audio_clip.duration_seconds
+    durEachClip = 58
+    num_clips_to_split = int(duration//durEachClip)+1
+    print(f"init numclips to split = {num_clips_to_split}")
+    last_slash_index = input_path.rfind('/')
+    input_folder = input_path[:last_slash_index]
+    input_file = input_path[last_slash_index + 1:]
+
+    print(f"Folder: {input_folder}")
+    print(f"File: {input_file}")
+    #input_folder = input_path.split("/")[0]
+    #input_file = input_path.split("/")[1]
+    output_path_list = []
+
+    if(duration%num_clips_to_split < 8 & num_clips_to_split > 1):
+        num_clips_to_split+=1
+    durEachClip = duration/num_clips_to_split
+    print(f"you need {num_clips_to_split} and each clip should be {durEachClip} long out of a {duration} long clip")
+
+    for i in range(num_clips_to_split):
+        start = durEachClip*i*1000
+        end = start+durEachClip*1000
+        output_path = f"{input_folder}/[{i}]{input_file}"
+        print(f"start: {start} end: {end} saved at {output_path}")
+        trimmed_audio_clip = audio_clip[start:end]
+        trimmed_audio_clip.export(output_path, format="mp3")
+        output_path_list.append(output_path)
+    return output_path_list
+
+
+
+def makeMoreBAD(input_file):
+    audio_clip = AudioFileClip(input_file).fx(vfx.speedx, 1)
+    output_file = [input_file]
+    num=0
+    if(audio_clip.duration > (58)):
+        num = int(round(audio_clip.duration/58,1))
+        print(f"Lets make {num} shorts with this!")
+        toSplit = AudioSegment.from_mp3(input_file) 
+    for i in range(num):
+        output_file[i] = f"[{i}]{input_file}"
+        toSplit.export(output_file[i])
+    return output_file
 
 def edit_video(audio_path, video_path, output_path):
     audio_clip = AudioFileClip(audio_path).fx(vfx.speedx, 1)
     start_point = random.randint(1, 480)
-    video_clip = VideoFileClip("minecraft.mp4").subclip(start_point, start_point + audio_clip.duration + 1.3)
+    video_clip = VideoFileClip("snakes.mp4").subclip(start_point, start_point + audio_clip.duration)
     final_clip = video_clip.set_audio(audio_clip)
 
     w, h = final_clip.size
@@ -62,7 +142,7 @@ def transcribe_video(video_path, srt_output_path):
     aai.settings.api_key = os.getenv('ASSEMBLYAI_API_KEY')
     transcriber = aai.Transcriber()
     transcript = transcriber.transcribe(video_path)
-    srt = transcript.export_subtitles_srt()
+    srt = transcript.export_subtitles_srt(chars_per_caption=17)
 
     with open(srt_output_path, "w") as f:
         f.write(srt)
@@ -76,7 +156,7 @@ def add_subtitles_to_video(video_path, srt_path, output_path):
     for subtitle in subtitles:
         start_time = subtitle.start.hours * 3600 + subtitle.start.minutes * 60 + subtitle.start.seconds + subtitle.start.milliseconds / 1000
         end_time = subtitle.end.hours * 3600 + subtitle.end.minutes * 60 + subtitle.end.seconds + subtitle.end.milliseconds / 1000
-        text_clip = TextClip(subtitle.text, fontsize=36, font='Arial', color='black', bg_color='white', size=(video.size[0]*3/4, None), method='caption')
+        text_clip = TextClip(subtitle.text, fontsize=43, font='System-Font-Bold', color='White', bg_color='none', size=(video.size[0]*5/6, None), method='caption', stroke_width=1, stroke_color='white')
         text_clip = text_clip.set_start(start_time).set_duration(end_time - start_time)
         text_clip = text_clip.set_position(('center', 'center'))
         subtitle_clips.append(text_clip)
@@ -132,7 +212,7 @@ def upload_to_youtube(video_path, title, description):
                 "defaultLanguage": "en",
             },
             "status": {
-                "privacyStatus": "public",
+                "privacyStatus": "private",
                 "madeForKids": False
             }
         },
